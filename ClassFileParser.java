@@ -296,6 +296,7 @@ public class ClassFileParser {
         // 2. Minor, major version
         int minor_version = in.readUnsignedShort();
         int major_version = in.readUnsignedShort();
+        System.out.println("Version: " + major_version + "." + minor_version);
 
         // 3. Read constant pool count
         int constant_pool_count = in.readUnsignedShort();
@@ -410,6 +411,11 @@ public class ClassFileParser {
         int this_class = in.readUnsignedShort();
         int super_class = in.readUnsignedShort();
 
+        System.out.println("Access Flags: " + String.format("0x%04X", access_flags));
+        System.out.println("Class: " + ((CONSTANT_Utf8_info)constant_pool[((CONSTANT_Class_info)constant_pool[this_class]).name_index]).bytes);
+        System.out.println("Super Class: " + ((CONSTANT_Utf8_info)constant_pool[((CONSTANT_Class_info)constant_pool[super_class]).name_index]).bytes);
+
+
         // 5. Interfaces
         int interfaces_count = in.readUnsignedShort();
         int[] interfaces = new int[interfaces_count];
@@ -417,11 +423,16 @@ public class ClassFileParser {
 
         // 6. Fields
         int fields_count = in.readUnsignedShort();
+        System.out.println("Fields count: " + fields_count);
         field_info[] fields = new field_info[fields_count];
         for (int i = 0; i < fields_count; i++) {
             int f_access_flags = in.readUnsignedShort();
             int name_index = in.readUnsignedShort();
             int descriptor_index = in.readUnsignedShort();
+
+            System.out.println("Field name: " + ((CONSTANT_Utf8_info)constant_pool[name_index]).bytes);
+            System.out.println("Field Description: " + ((CONSTANT_Utf8_info)constant_pool[descriptor_index]).bytes);
+
             int attributes_count = in.readUnsignedShort();
             fields[i] = new field_info(f_access_flags, name_index, descriptor_index, attributes_count, new attribute_info[attributes_count]);
 
@@ -447,6 +458,7 @@ public class ClassFileParser {
                             break;
                         }
                     // Needs annotation support. So, @Override among other annotations are not supported yet.
+                    // Further, have no stack frame map, so we are assuming the class files to be inherently safe for now !!
                     default:
                         in.skipBytes(attribute_length);
                 }
@@ -461,6 +473,8 @@ public class ClassFileParser {
             int m_access_flags = in.readUnsignedShort();
             int name_index = in.readUnsignedShort();
             int descriptor_index = in.readUnsignedShort();
+            System.out.println("Method name: " + ((CONSTANT_Utf8_info)constant_pool[name_index]).bytes);
+            System.out.println("Method Description: " + ((CONSTANT_Utf8_info)constant_pool[descriptor_index]).bytes);
             String current_method_name = ((CONSTANT_Utf8_info)constant_pool[name_index]).bytes;
             int attributes_count = in.readUnsignedShort();
             methods[i] = new method_info(m_access_flags, name_index, descriptor_index, attributes_count, new attribute_info[attributes_count]);
@@ -519,17 +533,19 @@ public class ClassFileParser {
         throw new IOException("Method " + methodName + " not found or has no code attribute");
     }
 
-    public static void main(String[] args) throws IOException {
-        File classFile = new File("test.class");
+    public static byte[] main(String[] args) throws IOException {
+        File classFile = new File(args[0] + ".class");
         FileInputStream fis = new FileInputStream(classFile);
         byte[] classData = fis.readAllBytes();
         fis.close();
 
-        byte[] mainBytecode = extractMethodBytecode(classData, "main");
+        byte[] mainBytecode = extractMethodBytecode(classData, args[1]);
 
-        System.out.println("Main method bytecode (" + mainBytecode.length + " bytes):");
-        for (byte b : mainBytecode) {
-            System.out.println(String.format("0x%02X", b));
-        }
+        // System.out.println("Main method bytecode (" + mainBytecode.length + " bytes):");
+        // for (byte b : mainBytecode) {
+        //     System.out.println(String.format("0x%02X", b));
+        // }
+
+        return mainBytecode;
     }
 }
