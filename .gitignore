@@ -1,2 +1,10 @@
 test.java
 *.class
+/com
+/java
+/javax
+/jdk
+/META-INF
+/org
+/sun
+/rt
