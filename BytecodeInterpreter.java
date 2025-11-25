@@ -3,7 +3,7 @@ import java.util.*;
 
 public class BytecodeInterpreter {
     public static void main(String[] args) throws IOException {
-        Interpreter interpreter = new Interpreter(args[0]);
+        Interpreter interpreter = new Interpreter(args[0], "main");
         int result = interpreter.run();
         System.out.println("Result = " + result);
     }
@@ -19,16 +19,18 @@ class Interpreter {
     private static Stack<StackFrame> callStack = new Stack<>();
 
 
-    public Interpreter(String fileName) throws IOException{
-        this.bytecode = ClassFileParser.main(new String[] { fileName, "main" });
-        this.currentFrame = new StackFrame(10, 100);
+    public Interpreter(String fileName, String method) throws IOException{
+        if(!ClassLoader.heap.isClassLoaded(fileName)) ClassLoader.loadClass(fileName);
+        ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(fileName, method);
+        this.bytecode = cattr.code;
+        this.currentFrame = new StackFrame(cattr.max_locals, cattr.max_stack, fileName, method);
     }
 
 
-    public int run() {
+    public int run() throws IOException{
         while (true) {
             int opcode = fetchByte();
-
+            System.out.printf("Opcode: 0x%02x%n", opcode);
 
             switch (opcode) {
                 case 0x00: // nop
@@ -84,6 +86,18 @@ class Interpreter {
                     break;
                 }
 
+                case 0x2a: case 0x2b: case 0x2c: case 0x2d: { // aload_0 .. aload_3
+                    int index = opcode - 0x2a;
+                    currentFrame.push(currentFrame.getLocal(index));
+                    break;
+                }
+
+                case 0x4b: case 0x4c: case 0x4d: case 0x4e: { // astore_0 .. astore_3
+                    int index = opcode - 0x4b;
+                    currentFrame.setLocal(index, currentFrame.pop());
+                    break;
+                }
+
                 // Arithmetic
                 case 0x60: { // iadd
                     int v2 = currentFrame.pop();
@@ -135,9 +149,67 @@ class Interpreter {
                     break;
                 }
 
+                case 0x9f: { // if_icmpeq
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 == value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+                case 0xa0: { // if_icmpne
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 != value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+                case 0xa1: { // if_icmplt
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 < value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+                case 0xa2: { // if_icmpge
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 >= value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+                case 0xa3: { // if_icmpgt
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 > value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+                case 0xa4: { // if_icmple
+                    int offset = fetchShort();
+                    int value2 = currentFrame.pop();
+                    int value1 = currentFrame.pop();
+                    if (value1 <= value2) {
+                        pc += offset - 3;
+                    }
+                    break;
+                }
+
                 // Object creation
-                case 0xbb: { // new (with hardcoded field count for example)
-                    int objId = Memory.heap.newObject(2);
+                case 0xbb: { // new
+                    int indexbyte1 = fetchByte();
+                    int indexbyte2 = fetchByte();
+                    int name_index = (((ClassFileParser.CONSTANT_Class_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), indexbyte1 << 8 |indexbyte2)).name_index);
+                    int objId = ClassLoader.heap.newObject((String.valueOf(((ClassFileParser.CONSTANT_Utf8_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_index)).bytes)));
                     currentFrame.push(objId);
                     break;
                 }
@@ -146,15 +218,72 @@ class Interpreter {
                 case 0xb4: { // getfield
                     int fieldIndex = fetchShort();
                     int objRef = currentFrame.pop();
-                    int fieldValue = Memory.heap.getField(objRef, fieldIndex);
-                    currentFrame.push(fieldValue);
+                    int name_and_type_idx = ((ClassFileParser.CONSTANT_Fieldref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), fieldIndex)).name_and_type_index;
+
+                    String fname = String.valueOf(getConstantUTF8(((ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_idx)).name_index));
+                    String ftype = String.valueOf(getConstantUTF8(((ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_idx)).descriptor_index));
+
+                    switch(ftype){
+                        case "I":{
+                                int field = ClassLoader.heap.getIntField(objRef, fname);
+                                currentFrame.push(field);
+                            }
+                            break;
+                        case "F":{
+                                int field = ClassLoader.heap.getIntField(objRef, fname);
+                                currentFrame.push(field);
+                            }
+                            break;
+                        case "J":{
+                                long field = ClassLoader.heap.getLongField(objRef, fname);
+                                currentFrame.push((int)(field >> 32));
+                                currentFrame.push((int)field);
+                            }
+                            break;
+                        case "D":{
+                                long field = ClassLoader.heap.getLongField(objRef, fname);
+                                currentFrame.push((int)(field >> 32));
+                                currentFrame.push((int)field);
+                            }
+                            break;
+                    }
                     break;
                 }
                 case 0xb5: { // putfield
                     int fieldIndex = fetchShort();
                     int value = currentFrame.pop();
-                    int objRef = currentFrame.pop();
-                    Memory.heap.putField(objRef, fieldIndex, value);
+                    // int objRef = currentFrame.pop();
+
+                    int name_and_type_idx = ((ClassFileParser.CONSTANT_Fieldref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), fieldIndex)).name_and_type_index;
+                    String fname = String.valueOf(getConstantUTF8(((ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_idx)).name_index));
+                    String ftype = String.valueOf(getConstantUTF8(((ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_idx)).descriptor_index));
+
+                    switch(ftype){
+                        case "I":{
+                                int objRef = currentFrame.pop();
+                                ClassLoader.heap.putIntField(objRef, fname, value);
+                            }
+                            break;
+                        case "F":{
+                                int objRef = currentFrame.pop();
+                                ClassLoader.heap.putIntField(objRef, fname, value);
+                            }
+                            break;
+                        case "J":{
+                                int lowBytes = currentFrame.pop();
+                                int objRef = currentFrame.pop();
+                                long nvalue = (long)(value << 32 | lowBytes);
+                                ClassLoader.heap.putLongField(objRef, fname, nvalue);
+                            }
+                            break;
+                        case "D":{
+                                int lowBytes = currentFrame.pop();
+                                int objRef = currentFrame.pop();
+                                long nvalue = (long)(value << 32 | lowBytes);
+                                ClassLoader.heap.putLongField(objRef, fname, nvalue);
+                            }
+                            break;
+                    }
                     break;
                 }
 
@@ -168,9 +297,39 @@ class Interpreter {
                     break;
                 }
                 case 0xb7: { // invokespecial (constructor or private method)
-                    // Simplified stub similar to invokevirtual
-                    int objRefOrArg = currentFrame.pop();
-                    currentFrame.push(0);
+                    int methodIndex = fetchShort();
+                    
+                    int class_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).class_index;
+                    String className = getConstantUTF8(((ClassFileParser.CONSTANT_Class_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), class_index)).name_index);
+
+                    if (className.equals("java/lang/Object")) {
+                        currentFrame.pop(); // Pop the object reference
+                    } else {
+                        // Save current state
+                        callStack.push(currentFrame);
+                        currentFrame.setReturnPc(pc);
+
+                        // Get method info
+                        int name_and_type_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).name_and_type_index;
+                        ClassFileParser.CONSTANT_NameAndType_info name_and_type_info = (ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_index);
+                        String methodName = getConstantUTF8(name_and_type_info.name_index);
+                        
+                        // Get new method's code
+                        ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(className, methodName);
+                        
+                        // Create new frame
+                        StackFrame newFrame = new StackFrame(cattr.max_locals, cattr.max_stack, className, methodName);
+
+                        // For a constructor (<init>), the first argument is the uninitialized object reference.
+                        // We assume no other arguments for simplicity here.
+                        int objRef = currentFrame.pop();
+                        newFrame.setLocal(0, objRef); // 'this' is local variable 0
+
+                        // Switch context
+                        currentFrame = newFrame;
+                        bytecode = cattr.code;
+                        pc = 0;
+                    }
                     break;
                 }
                 case 0xb8: { // invokestatic
@@ -185,7 +344,11 @@ class Interpreter {
                     if (callStack.isEmpty()) {
                         return retVal;
                     } else {
-                        // Pop frame etc. (not implemented)
+                        StackFrame previousFrame = callStack.pop();
+                        pc = previousFrame.getReturnPc();
+                        currentFrame = previousFrame;
+                        ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(currentFrame.getClassName(), currentFrame.getMethodName()); // Assuming we return to main, needs generalization
+                        bytecode = cattr.code;
                     }
                     break;
                 }
@@ -193,7 +356,11 @@ class Interpreter {
                     if (callStack.isEmpty()) {
                         return 0;
                     } else {
-                        // Pop frame etc. (not implemented)
+                        StackFrame previousFrame = callStack.pop();
+                        pc = previousFrame.getReturnPc();
+                        currentFrame = previousFrame;
+                        ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(currentFrame.getClassName(), currentFrame.getMethodName()); // Assuming we return to main, needs generalization
+                        bytecode = cattr.code;
                     }
                     break;
                 }
@@ -222,18 +389,27 @@ class Interpreter {
         int val = (high << 8) | low;
         return val > 32767 ? val - 65536 : val;
     }
+
+    private String getConstantUTF8(int index){
+        return ((ClassFileParser.CONSTANT_Utf8_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), index)).bytes;
+    }
 }
 
 
 class StackFrame {
     private int[] locals;
     private int[] operandStack;
+    private String className;
+    private String methodName;
     private int sp = -1;
+    private int returnPc;
 
 
-    public StackFrame(int localsSize, int stackSize) {
+    public StackFrame(int localsSize, int stackSize, String className, String methodName) {
         locals = new int[localsSize];
         operandStack = new int[stackSize];
+        this.className = className;
+        this.methodName = methodName;
     }
 
 
@@ -255,6 +431,22 @@ class StackFrame {
 
     public void setLocal(int index, int value) {
         locals[index] = value;
+    }
+
+    public void setReturnPc(int pc){
+        this.returnPc = pc;
+    }
+
+    public int getReturnPc(){
+        return this.returnPc;
+    }
+
+    public String getClassName(){
+        return this.className;
+    }
+
+    public String getMethodName(){
+        return this.methodName;
     }
 }
 
