@@ -8,3 +8,5 @@ test.java
 /org
 /sun
 /rt
+run.sh
+push.sh
