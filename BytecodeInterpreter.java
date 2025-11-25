@@ -288,35 +288,67 @@ class Interpreter {
                 }
 
                 // Method invocation
-                case 0xb6: { // invokevirtual (simplified stub)
-                    // For demonstration, pop arguments and just simulate call
-                    // Actual implementation requires call stack handling and method lookup
+                case 0xb6: { // invokevirtual
+                    int methodIndex = fetchShort();
+
+                    int name_and_type_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).name_and_type_index;
+                    ClassFileParser.CONSTANT_NameAndType_info name_and_type_info = (ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_index);
+                    String methodName = getConstantUTF8(name_and_type_info.name_index);
+                    String descriptor = getConstantUTF8(name_and_type_info.descriptor_index);
+
+                    int argSlots = getArgumentCount(descriptor);
+                    int[] args = new int[argSlots];
+                    for (int i = argSlots - 1; i >= 0; i--) {
+                        args[i] = currentFrame.pop();
+                    }
+
                     int objRef = currentFrame.pop();
-                    // Simulate method call result 0 pushed onto stack
-                    currentFrame.push(0);
+                    // if (objRef == 0) throw new RuntimeException("NullPointerException");
+
+                    String objectClassName = ClassLoader.heap.getObjectClassName(objRef);
+                    ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(objectClassName, methodName);
+
+                    StackFrame newFrame = new StackFrame(cattr.max_locals, cattr.max_stack, objectClassName, methodName);
+                    newFrame.setLocal(0, objRef);
+                    for (int i = 0; i < argSlots; i++) {
+                        newFrame.setLocal(1 + i, args[i]);
+                    }
+
+                    callStack.push(currentFrame);
+                    currentFrame.setReturnPc(pc);
+                    currentFrame = newFrame;
+                    bytecode = cattr.code;
+                    pc = 0;
                     break;
                 }
                 case 0xb7: { // invokespecial (constructor or private method)
                     int methodIndex = fetchShort();
-                    
+
                     int class_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).class_index;
                     String className = getConstantUTF8(((ClassFileParser.CONSTANT_Class_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), class_index)).name_index);
 
                     if (className.equals("java/lang/Object")) {
                         currentFrame.pop(); // Pop the object reference
                     } else {
-                        // Save current state
-                        callStack.push(currentFrame);
-                        currentFrame.setReturnPc(pc);
-
                         // Get method info
                         int name_and_type_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).name_and_type_index;
                         ClassFileParser.CONSTANT_NameAndType_info name_and_type_info = (ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_index);
                         String methodName = getConstantUTF8(name_and_type_info.name_index);
-                        
+                        String descriptor = getConstantUTF8(name_and_type_info.descriptor_index);
+
+                        int argSlots = getArgumentCount(descriptor);
+                        int[] args = new int[argSlots];
+                        for (int i = argSlots - 1; i >= 0; i--) {
+                            args[i] = currentFrame.pop();
+                        }
+
+                        // Save current state
+                        callStack.push(currentFrame);
+                        currentFrame.setReturnPc(pc);
+
                         // Get new method's code
                         ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(className, methodName);
-                        
+
                         // Create new frame
                         StackFrame newFrame = new StackFrame(cattr.max_locals, cattr.max_stack, className, methodName);
 
@@ -324,6 +356,10 @@ class Interpreter {
                         // We assume no other arguments for simplicity here.
                         int objRef = currentFrame.pop();
                         newFrame.setLocal(0, objRef); // 'this' is local variable 0
+
+                        for (int i = 0; i < argSlots; i++) {
+                            newFrame.setLocal(1 + i, args[i]);
+                        }
 
                         // Switch context
                         currentFrame = newFrame;
@@ -333,8 +369,41 @@ class Interpreter {
                     break;
                 }
                 case 0xb8: { // invokestatic
-                    // Simplified stub for static method
-                    currentFrame.push(0);
+                    int methodIndex = fetchShort();
+
+                    int class_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).class_index;
+                    String className = getConstantUTF8(((ClassFileParser.CONSTANT_Class_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), class_index)).name_index);
+
+                    int name_and_type_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).name_and_type_index;
+                    ClassFileParser.CONSTANT_NameAndType_info name_and_type_info = (ClassFileParser.CONSTANT_NameAndType_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), name_and_type_index);
+                    String methodName = getConstantUTF8(name_and_type_info.name_index);
+                    String descriptor = getConstantUTF8(name_and_type_info.descriptor_index);
+
+                    int argSlots = getArgumentCount(descriptor);
+                    int[] args = new int[argSlots];
+                    for (int i = argSlots - 1; i >= 0; i--) {
+                        args[i] = currentFrame.pop();
+                    }
+
+                    // Save current state
+                    callStack.push(currentFrame);
+                    currentFrame.setReturnPc(pc);
+
+                    // Get new method's code
+                    ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(className, methodName);
+
+                    // Create new frame
+                    StackFrame newFrame = new StackFrame(cattr.max_locals, cattr.max_stack, className, methodName);
+
+                    // For static methods, arguments start at local 0
+                    for (int i = 0; i < argSlots; i++) {
+                        newFrame.setLocal(i, args[i]);
+                    }
+
+                    // Switch context
+                    currentFrame = newFrame;
+                    bytecode = cattr.code;
+                    pc = 0;
                     break;
                 }
 
@@ -349,6 +418,7 @@ class Interpreter {
                         currentFrame = previousFrame;
                         ClassFileParser.Code_attribute cattr = ClassLoader.heap.getMethodCode(currentFrame.getClassName(), currentFrame.getMethodName()); // Assuming we return to main, needs generalization
                         bytecode = cattr.code;
+                        currentFrame.push(retVal);
                     }
                     break;
                 }
@@ -388,6 +458,33 @@ class Interpreter {
         int low = bytecode[pc++] & 0xFF;
         int val = (high << 8) | low;
         return val > 32767 ? val - 65536 : val;
+    }
+
+    private int getArgumentCount(String descriptor) {
+        int count = 0;
+        int i = 1; // Skip '('
+        while (descriptor.charAt(i) != ')') {
+            char c = descriptor.charAt(i);
+            if (c == 'L') {
+                count++;
+                while (descriptor.charAt(i) != ';') i++;
+                i++;
+            } else if (c == '[') {
+                while (descriptor.charAt(i) == '[') i++;
+                if (descriptor.charAt(i) == 'L') {
+                    while (descriptor.charAt(i) != ';') i++;
+                }
+                count++;
+                i++;
+            } else if (c == 'D' || c == 'J') {
+                count += 2;
+                i++;
+            } else {
+                count++;
+                i++;
+            }
+        }
+        return count;
     }
 
     private String getConstantUTF8(int index){
