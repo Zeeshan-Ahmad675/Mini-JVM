@@ -49,7 +49,10 @@ public class ClassLoader {
             System.out.println("[ClassLoader] Successfully loaded and stored class: " + className);
         }
         catch(IOException e){System.out.println("Error in loading file.");}
-        catch(Exception e){System.out.println("Error in loading file other than IO " + e.getMessage());}
+        catch(Exception e){
+            System.out.println("Error in loading file. Not an IO error " + e.getMessage());
+            e.printStackTrace();
+        }
 
      }
 }

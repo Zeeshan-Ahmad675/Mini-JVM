@@ -508,7 +508,7 @@ public class ClassFileParser {
 
         System.out.println("Access Flags: " + String.format("0x%04X", access_flags));
         System.out.println("Class: " + ((CONSTANT_Utf8_info)constant_pool[((CONSTANT_Class_info)constant_pool[this_class]).name_index]).bytes);
-        System.out.println("Super Class: " + ((CONSTANT_Utf8_info)constant_pool[((CONSTANT_Class_info)constant_pool[super_class]).name_index]).bytes);
+        if(super_class != 0) System.out.println("Super Class: " + ((CONSTANT_Utf8_info)constant_pool[((CONSTANT_Class_info)constant_pool[super_class]).name_index]).bytes);
 
 
         // 5. Interfaces
@@ -613,6 +613,7 @@ public class ClassFileParser {
                             break;
                         }
                     default:
+                        in.skipBytes(attribute_length);
                 }
             }
         }

@@ -288,12 +288,10 @@ class Interpreter {
                 }
 
                 // Method invocation
-                case 0xb6: { // invokevirtual (simplified stub)
-                    // For demonstration, pop arguments and just simulate call
-                    // Actual implementation requires call stack handling and method lookup
-                    int objRef = currentFrame.pop();
-                    // Simulate method call result 0 pushed onto stack
-                    currentFrame.push(0);
+                case 0xb6: { // invokevirtual
+                    int methodIndex = fetchShort();
+
+                     
                     break;
                 }
                 case 0xb7: { // invokespecial (constructor or private method)
@@ -302,9 +300,9 @@ class Interpreter {
                     int class_index = ((ClassFileParser.CONSTANT_Methodref_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), methodIndex)).class_index;
                     String className = getConstantUTF8(((ClassFileParser.CONSTANT_Class_info)ClassLoader.heap.getConstantPoolEntry(currentFrame.getClassName(), class_index)).name_index);
 
-                    if (className.equals("java/lang/Object")) {
-                        currentFrame.pop(); // Pop the object reference
-                    } else {
+                    // if (className.equals("java/lang/Object")) {
+                    //     currentFrame.pop(); // Pop the object reference
+                    // } else {
                         // Save current state
                         callStack.push(currentFrame);
                         currentFrame.setReturnPc(pc);
@@ -329,7 +327,7 @@ class Interpreter {
                         currentFrame = newFrame;
                         bytecode = cattr.code;
                         pc = 0;
-                    }
+                    // }
                     break;
                 }
                 case 0xb8: { // invokestatic
@@ -366,7 +364,7 @@ class Interpreter {
                 }
 
                 default:
-                    // throw new RuntimeException("Unsupported opcode: 0x" + Integer.toHexString(opcode));
+                    throw new RuntimeException("Unsupported opcode: 0x" + Integer.toHexString(opcode));
             }
         }
     }
