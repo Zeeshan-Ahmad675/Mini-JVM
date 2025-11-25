@@ -145,6 +145,12 @@ class Heap {
         if (obj == null) throw new RuntimeException("Null object reference");
         return (long)obj.getField(fieldName);
     }
+
+    public String getObjectClassName(int objId) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        return obj.getClassName();
+    }
 }
 
 class ObjectInstance {
