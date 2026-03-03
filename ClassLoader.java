@@ -4,20 +4,11 @@ import java.util.*;
 public class ClassLoader {
     protected static Heap heap = new Heap();
 
-    /**
-     * Constructs a new ClassLoader.
-     * @param heap The JVM's heap, used to store loaded class data.
-     * @param classPath The root directory to search for class files.
-     */
+
     public ClassLoader(String classPath){
         // this.classPath = classPath ;
     }
 
-      /**
-     * Loads a class by its fully qualified name.
-     * @param className The name of the class to load (e.g., "java.lang.Object", "com.example.MyClass").
-     * @throws IOException if the class file cannot be found or read.
-     */
 
 
     public static void loadClass(String className) throws IOException{
