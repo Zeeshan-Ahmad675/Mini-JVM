@@ -48,7 +48,10 @@ public class ClassLoader {
             );
             System.out.println("[ClassLoader] Successfully loaded and stored class: " + className);
         }
-        catch(IOException e){System.out.println("Error in loading file.");}
+        catch(IOException e){
+            System.out.println("Error in loading file.");
+            e.printStackTrace();
+        }
         catch(Exception e){
             System.out.println("Error in loading file. Not an IO error " + e.getMessage());
             e.printStackTrace();
@@ -63,17 +66,33 @@ class Heap {
     private Map<String, ClassFileParser.cp_info[]> constant_pool_area = new HashMap<>();
     private Map<String, ClassFileParser.method_info[]> method_area = new HashMap<>();
     private Map<String, ClassFileParser.field_info[]> field_area = new HashMap<>();
+    private Map<String, Map<String, Object>> static_area = new HashMap<>();
+    private Map<String, Boolean> classInitialized = new HashMap<>();
+    private Map<String, Integer> string_constant_pool = new HashMap<>();
     private int nextId = 1;
 
     public boolean isClassLoaded(String className){
         return method_area.containsKey(className);
     }
+    public boolean isClassInitialized(String className){
+        return classInitialized.containsKey(className);
+    }
 
     public ClassFileParser.cp_info getConstantPoolEntry(String className, int index){
         return this.constant_pool_area.get(className)[index];
     }
+    
+    public void putStaticField(String className, String fieldName, Object value){
+        if(static_area.get(className) == null) static_area.put(className, new HashMap<>());
+        static_area.get(className).put(fieldName, value);
+    }
 
-    public ClassFileParser.Code_attribute getMethodCode(String className, String methodName) throws IOException{
+    public Object getStaticField(String className, String fieldName) throws IOException {
+        if(!isClassLoaded(className)) ClassLoader.loadClass(className);
+        return static_area.get(className).get(fieldName);
+    }
+
+    public ClassFileParser.Code_attribute getMethodCode(String className, String methodName) throws IOException {
         if(!isClassLoaded(className)) ClassLoader.loadClass(className);
         for(ClassFileParser.method_info method : method_area.get(className)){
             String current_method = ((ClassFileParser.CONSTANT_Utf8_info)getConstantPoolEntry(className, method.name_index)).bytes;
@@ -86,84 +105,16 @@ class Heap {
                 }
             }
         }
-        throw new RuntimeException("No such method found");
+        return null;
     }
 
 
-    public void storeClass(String className,ClassFileParser.cp_info[] cp,ClassFileParser.method_info[] methods,ClassFileParser.field_info[] fields){
+    public void storeClass(String className, ClassFileParser.cp_info[] cp, ClassFileParser.method_info[] methods, ClassFileParser.field_info[] fields){
         constant_pool_area.put(className,cp) ;
         method_area.put(className,methods);
         field_area.put(className,fields);
-    }
-// vivek raj -- modify this code to  takes a className to create a typed object instance.
-    // public int newObject(int fieldCount) {
-    //     int id = nextId++;
-    //     objects.put(id, new ObjectInstance(fieldCount));
-    //     return id;
-    // }
-
-
-    // This method now takes a className to create a typed object instance.
-    public int newObject(String className) throws IOException{
-        if(!constant_pool_area.containsKey(className)) {
-            ClassLoader.loadClass(className);
-        }
-        int id = nextId++;
-         // Get the number of instance fields for this class (non-static fields).
-        List<ClassFileParser.field_info> fields = new ArrayList<>(Arrays.asList(field_area.get(className))) ;
-        if(fields!=null){
-            for(ClassFileParser.field_info field : fields){
-                    // ACC_STATIC flag is 0x0008. We only allocate space for non-static fields.
-                    if((field.access_flags & 0x0008) != 0) {
-                        fields.remove(field);
-                    }
-            }
-        }
-        objects.put(id, new ObjectInstance(className, fields)) ;
-        return id ;
-    }
-
-
-    public void putIntField(int objId, String fieldName, int value) {
-        ObjectInstance obj = objects.get(objId);
-        if (obj == null) throw new RuntimeException("Null object reference");
-        obj.setField(fieldName, value);
-    }
-
-    public void putLongField(int objId, String fieldName, long value) {
-        ObjectInstance obj = objects.get(objId);
-        if (obj == null) throw new RuntimeException("Null object reference");
-        obj.setField(fieldName, value);
-    }
-
-
-    public int getIntField(int objId, String fieldName) {
-        ObjectInstance obj = objects.get(objId);
-        if (obj == null) throw new RuntimeException("Null object reference");
-        return (int)obj.getField(fieldName);
-    }
-
-    public long getLongField(int objId, String fieldName) {
-        ObjectInstance obj = objects.get(objId);
-        if (obj == null) throw new RuntimeException("Null object reference");
-        return (long)obj.getField(fieldName);
-    }
-
-    public String getObjectClassName(int objId) {
-        ObjectInstance obj = objects.get(objId);
-        if (obj == null) throw new RuntimeException("Null object reference");
-        return obj.getClassName();
-    }
-}
-
-class ObjectInstance {
-    private final String className;
-    private Map<String, Object> fields = new HashMap<>();
-
-
-    public ObjectInstance(String className, List<ClassFileParser.field_info> fields) {
-        this.className = className ;
         for(ClassFileParser.field_info field : fields){
+            if((field.access_flags & 0x0008) == 0) continue;
             Object value = 0;
             ClassFileParser.CONSTANT_Utf8_info field_name = (ClassFileParser.CONSTANT_Utf8_info)(ClassLoader.heap.getConstantPoolEntry(className, field.name_index));
             for(ClassFileParser.attribute_info attr :  field.attributes){
@@ -185,9 +136,98 @@ class ObjectInstance {
                         default:
                             break;
                     }
+                if(static_area.get(className) == null) static_area.put(className, new HashMap<>());
+                static_area.get(className).put(field_name.bytes, value);
                 break;
                 }
             }
+        }
+    }
+
+    public int newObject(String className) throws IOException{
+        if(!constant_pool_area.containsKey(className)) {
+            ClassLoader.loadClass(className);
+        }
+        int id = nextId++;
+        List<ClassFileParser.field_info> fields = new ArrayList<>(Arrays.asList(field_area.get(className))) ;
+        if(fields != null){
+            // ACC_STATIC flag is 0x0008. We only allocate space for non-static fields.
+            fields.removeIf(field -> (field.access_flags & 0x0008) != 0);
+        }
+        objects.put(id, new ObjectInstance(className, fields)) ;
+        // if(className.equals("java/lang/String")) string_constant_pool.put(getStringField(id), id);
+        return id;
+    }
+
+    public void putIntField(int objId, String fieldName, int value) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        obj.setField(fieldName, value);
+    }
+
+    public void putLongField(int objId, String fieldName, long value) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        obj.setField(fieldName, value);
+    }
+
+    public void putStringField(int objId, String fieldName, String value){
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        obj.setField(fieldName, value);
+    }
+
+
+    public int getIntField(int objId, String fieldName) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        return (int)obj.getField(fieldName);
+    }
+
+    public long getLongField(int objId, String fieldName) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        return (long)obj.getField(fieldName);
+    }
+
+    public String getStringField(int objId){
+        ObjectInstance obj = objects.get(objId);
+        if(obj == null || obj.getClassName() != "java/lang/String") return null;
+        else return (String)obj.getField("value");
+    }
+
+    public int getStringObjectReference(String literal) throws IOException{
+        Object ref = string_constant_pool.get(literal);
+        if(ref == null) {
+            int idx = newObject("java/lang/String");
+            putStringField(idx, "value", literal);
+            string_constant_pool.put(getStringField(idx), idx);
+            return idx;
+        }
+        return (int)ref;
+    }
+
+    public String getObjectClassName(int objId) {
+        ObjectInstance obj = objects.get(objId);
+        if (obj == null) throw new RuntimeException("Null object reference");
+        return obj.getClassName();
+    }
+
+    public void setClassInitialized(String className){
+        classInitialized.put(className, true);
+    }
+}
+
+class ObjectInstance {
+    private final String className;
+    private Map<String, Object> fields = new HashMap<>();
+
+
+    public ObjectInstance(String className, List<ClassFileParser.field_info> fields) {
+        this.className = className ;
+        for(ClassFileParser.field_info field : fields){
+            Object value = 0;
+            ClassFileParser.CONSTANT_Utf8_info field_name = (ClassFileParser.CONSTANT_Utf8_info)(ClassLoader.heap.getConstantPoolEntry(className, field.name_index));
             this.fields.put(field_name.bytes, value);
         }
     }

@@ -452,6 +452,7 @@ public class ClassFileParser {
                         int high_bytes = in.readInt();
                         int low_bytes = in.readInt();
                         constant_pool[i] = new CONSTANT_Long_info(high_bytes, low_bytes);
+                        i++;
                         break;
                     }
                 case 6:
@@ -459,6 +460,7 @@ public class ClassFileParser {
                         int high_bytes = in.readInt();
                         int low_bytes = in.readInt();
                         constant_pool[i] = new CONSTANT_Double_info(high_bytes, low_bytes);
+                        i++;
                         break;
                     }
                 case 12:
@@ -690,6 +692,7 @@ public class ClassFileParser {
                         int high_bytes = in.readInt();
                         int low_bytes = in.readInt();
                         constant_pool[i] = new CONSTANT_Long_info(high_bytes, low_bytes);
+                        i++;
                         break;
                     }
                 case 6:
@@ -697,6 +700,7 @@ public class ClassFileParser {
                         int high_bytes = in.readInt();
                         int low_bytes = in.readInt();
                         constant_pool[i] = new CONSTANT_Double_info(high_bytes, low_bytes);
+                        i++;
                         break;
                     }
                 case 12:
